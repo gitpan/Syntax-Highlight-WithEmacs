@@ -94,7 +94,7 @@ nxml-mode as default (on GNU FSF Emacs 23):
 
 =cut
 
-class Syntax::Highlight::WithEmacs 0.1 {
+class Syntax::Highlight::WithEmacs 0.2 {
     use warnings;
     use File::Temp;
     use Carp;
@@ -107,12 +107,31 @@ class Syntax::Highlight::WithEmacs 0.1 {
     use Convert::Color::XTerm;
     1}; }
 
-    { # fix for FCGI environment
-	my $ipc_close_terminal = \&IPC::Run::close_terminal;
-	no warnings qw(redefine);
-	*::IPC::Run::close_terminal = sub {
-	    untie *STDIN; untie *STDOUT; untie *STDERR;
-	    $ipc_close_terminal->(@_);
+    {
+    	no warnings qw(redefine);
+      # fix for FCGI environment
+    	my $ipc_close_terminal = \&IPC::Run::close_terminal;
+    	*::IPC::Run::close_terminal = sub {
+    	    untie *STDIN; untie *STDOUT; untie *STDERR;
+    	    $ipc_close_terminal->(@_);
+    	};
+
+      # fix for broken controlling terminal in IPC::Run :-{
+	my $ipc_do_kid_n_exit = \&IPC::Run::_do_kid_and_exit;
+	*::IPC::Run::_do_kid_and_exit = sub {
+	    my $that = shift;
+	    eval {
+		if ( %{$that->{PTYS}} ) {
+		    for ( keys %{$that->{PTYS}} ) {
+			unless (${*{$that->{PTYS}->{$_}}}{_slave_controller}++) {
+			    IPC::Run::Debug::_debug("Making a controller of ptty '$_'")
+				    if IPC::Run::Debug::_debugging_details;
+			    $that->{PTYS}->{$_}->make_slave_controlling_terminal;
+			};
+		    }
+		}
+	    };
+	    $ipc_do_kid_n_exit->($that => @_);
 	};
     }
 
@@ -245,8 +264,10 @@ C<ansify_string> method.
 	}
 	my $kill_command = $self->use_client ? '(delete-frame (selected-frame) t)' : '(kill-emacs)';
 	my @cmd = $self->use_client ? $self->_client_cmd_args : $self->emacs_cmd;
+	my @cmd_args = @{$self->emacs_args};
+	@cmd_args = grep { !/^-q$/i } @cmd_args if $self->use_client;
 	my $hyper = $self->htmlize_generate_hyperlinks ? 't' : 'nil';
-	my @args = (@cmd, '-nw', @{$self->emacs_args},
+	my @args = (@cmd, '-nw', @cmd_args,
 		    -eval => qq((ignore-errors (require 'htmlize) (setq htmlize-generate-hyperlinks $hyper) (setq htmlize-output-type "$mode") (htmlize-file $in $out))),
 		    -eval => $kill_command);
 	local $ENV{HOME} = (getpwuid $<)[7] unless $ENV{HOME};

@@ -24,7 +24,7 @@ no_index:
 provides:
   Syntax::Highlight::WithEmacs:
     file: lib/Syntax/Highlight/WithEmacs.pm
-    version: 0.1
+    version: 0.2
 recommends:
   Convert::Color::XTerm: 0
 requires:
@@ -37,4 +37,4 @@ requires:
   Term::ANSIColor: 0
   XML::LibXML: 0
   warnings: 0
-version: 0.1
+version: 0.2
